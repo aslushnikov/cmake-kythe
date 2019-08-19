@@ -3,23 +3,28 @@ const util = require('util');
 const fs = require('fs');
 const spawn = require('child_process').spawn;
 
-const COMPILE_COMMANDS_PATH = '/home/aslushnikov/webkit/WebKitBuild/Release/compile_commands.json';
 const KYTHE_ROOT_DIRECTORY = '/home/aslushnikov/prog/webkit';
 const KYTHE_OUTPUT_DIRECTORY = '/tmp/wk-extract';
 const KYTHE_EXTRACTOR_PATH = '/opt/kythe-v0.0.30/extractors/cxx_extractor';
 
+const COMPILE_COMMANDS_PATH = '/home/aslushnikov/webkit/WebKitBuild/Release/compile_commands.json';
 // const COMPILE_COMMANDS_PATH = '/Users/aslushnikov/Downloads/compile_commands.json';
 
 const rmAsync = util.promisify(require('rimraf'));
 const mkdirAsync = util.promisify(fs.mkdir.bind(fs));
 
 (async() => {
+  const compile_commands = require(COMPILE_COMMANDS_PATH);
+  const bmallocCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/bmalloc'));
+  // const wtfCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/WTF'));
+  // const jscCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/JavaScriptCore'));
+  console.log('bmalloc commands: ' + bmallocCommandsIndex);
+  //console.log('wtf commands: ' + wtfCommandsIndex);
+  //console.log('jsc commands: ' + jscCommandsIndex);
+  const commands = compile_commands.slice(0, bmallocCommandsIndex + 1);
   await rmAsync(KYTHE_OUTPUT_DIRECTORY);
   await mkdirAsync(KYTHE_OUTPUT_DIRECTORY);
-  const compile_commands = require(COMPILE_COMMANDS_PATH);
-  const jsc_commands = compile_commands.filter(entry => entry.file.includes('JavaScriptCore'));
-  console.log('JavaScriptCore compilation commands: ' + jsc_commands.length);
-  for (const entry of jsc_commands) {
+  for (const entry of commands) {
     const args = entry.command.trim().split(' ').slice(1);
     await spawnAsyncOrDie(KYTHE_EXTRACTOR_PATH, ...args, {
       cwd: entry.directory,
@@ -31,6 +36,15 @@ const mkdirAsync = util.promisify(fs.mkdir.bind(fs));
     });
   }
 })();
+
+function findLastIndex(a, p) {
+  let lastIndex = -1;
+  for (let i = 0; i < a.length; ++i) {
+    if (p.call(null, a[i]))
+      lastIndex = i;
+  }
+  return lastIndex;
+}
 
 async function spawnAsync(command, ...args) {
   let options = {};
