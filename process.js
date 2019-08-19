@@ -35,8 +35,10 @@ async function spawnAsync(command, ...args) {
   const cmd = spawn(command, args, options);
   let stdout = '';
   let stderr = '';
-  cmd.stdout.on('data', data => stdout += data);
-  cmd.stderr.on('data', data => stderr += data);
+  if (cmd.stdout)
+    cmd.stdout.on('data', data => stdout += data);
+  if (cmd.stderr)
+    cmd.stderr.on('data', data => stderr += data);
   const code = await new Promise(x => cmd.once('close', x));
   if (stdout)
     debug(stdout);
