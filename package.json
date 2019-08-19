@@ -4,6 +4,7 @@
   "description": "",
   "main": "process.js",
   "dependencies": {
+    "progress": "^2.0.3",
     "rimraf": "^3.0.0"
   },
   "devDependencies": {},
