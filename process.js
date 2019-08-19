@@ -1,12 +1,16 @@
 const path = require('path');
+const util = require('util');
+const rmAsync = util.promisify(require('rimraf'));
 
-const KYTHE_ROOT_DIRECTORY = '/home/aslushnikov/webkit';
-const KYTHE_OUTPUT_DIRECTORY = '/home/aslushnikov/webkit';
+const COMPILE_COMMANDS_PATH = '/home/aslushnikov/webkit/WebKitBuild/Release/compile_commands.json';
+const KYTHE_ROOT_DIRECTORY = '/home/aslushnikov/prog/webkit';
+const KYTHE_OUTPUT_DIRECTORY = '/tmp/wk-extract';
 const KYTHE_EXTRACTOR_PATH = '/opt/kythe-v0.0.30/extractors/cxx_extractor';
-//const COMPILE_COMMANDS_PATH = '/home/aslushnikov/webkit/WebKitBuild/Release/compile_commands.json';
+
 // const COMPILE_COMMANDS_PATH = '/Users/aslushnikov/Downloads/compile_commands.json';
 
 (async() => {
+  await rmAsync(KYTHE_OUTPUT_DIRECTORY);
   const compile_commands = require(COMPILE_COMMANDS_PATH);
   const jsc_commands = compile_commands.filter(entry => entry.file.includes('JavaScriptCore'));
   console.log('JavaScriptCore compilation commands: ' + jsc_commands.length);
@@ -14,13 +18,13 @@ const KYTHE_EXTRACTOR_PATH = '/opt/kythe-v0.0.30/extractors/cxx_extractor';
     const args = entry.command.trim().split(' ').slice(1);
     await spawnAsyncOrDie(KYTHE_EXTRACTOR_PATH, ...args, {
       cwd: entry.directory,
+      stdio: 'inherit',
       env: {
         KYTHE_ROOT_DIRECTORY,
         KYTHE_OUTPUT_DIRECTORY,
       }
     });
   }
-  console.log(Array.from(directories.values()));
 })();
 
 async function spawnAsync(command, ...args) {
