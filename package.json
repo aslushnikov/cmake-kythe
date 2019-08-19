@@ -1,0 +1,24 @@
+{
+  "name": "webkit-kythe",
+  "version": "1.0.0",
+  "description": "",
+  "main": "process.js",
+  "dependencies": {
+    "rimraf": "^3.0.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aslushnikov/webkit-kythe.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/aslushnikov/webkit-kythe/issues"
+  },
+  "homepage": "https://github.com/aslushnikov/webkit-kythe#readme"
+}
