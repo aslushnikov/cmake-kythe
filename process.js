@@ -8,18 +8,22 @@ const KYTHE_EXTRACTOR_PATH    = '/opt/kythe/extractors/cxx_extractor';
 const KYTHE_INDEXER_PATH      = '/opt/kythe/indexers/cxx_indexer';
 const KYTHE_WRITE_TABLES_PATH = '/opt/kythe/tools/write_tables';
 
-const PARALLEL = 25;
+const PARALLEL = 50;
 const KYTHE_ROOT_DIRECTORY = '/home/aslushnikov/prog/webkit';
 const KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY = '/tmp/wk-extract';
 const KYTHE_ENTRIES_OUTPUT_DIRECTORY = '/tmp/wk-entries';
 const KYTHE_SERVING_TABLE = '/tmp/wk.serving';
 
 const COMPILE_COMMANDS_PATH = '/home/aslushnikov/webkit/WebKitBuild/Release/compile_commands.json';
-// const COMPILE_COMMANDS_PATH = '/Users/aslushnikov/Downloads/compile_commands.json';
 
 const rmAsync = util.promisify(require('rimraf'));
 const mkdirAsync = util.promisify(fs.mkdir.bind(fs));
 const readdirAsync = util.promisify(fs.readdir);
+
+const RED_COLOR = '\x1b[31m';
+const GREEN_COLOR = '\x1b[32m';
+const YELLOW_COLOR = '\x1b[33m';
+const RESET_COLOR = '\x1b[0m';
 
 (async() => {
   const compile_commands = require(COMPILE_COMMANDS_PATH);
@@ -30,12 +34,15 @@ const readdirAsync = util.promisify(fs.readdir);
   console.log('wtf compilation commands: ' + wtfCommandsIndex);
   //console.log('jsc commands: ' + jscCommandsIndex);
 
+  const t = Date.now();
   await run_cxx_extractor(compile_commands.slice(0, wtfCommandsIndex + 1));
   await run_cxx_indexer();
   await write_serving_table_from_entries();
+  printDuration('Total time: ', Date.now() - t);
 })();
 
 async function run_cxx_extractor(commands) {
+  const t = Date.now();
   await rmAsync(KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY);
   await mkdirAsync(KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY);
 
@@ -47,6 +54,7 @@ async function run_cxx_extractor(commands) {
     total: commands.length,
   });
   await Promise.all([...Array(PARALLEL)].map(cxx_extractor));
+  printDuration('CXX_EXTRACTION: ', Date.now() - t);
 
   async function cxx_extractor() {
     if (commandIndex >= commands.length)
@@ -66,6 +74,7 @@ async function run_cxx_extractor(commands) {
 }
 
 async function run_cxx_indexer() {
+  const t = Date.now();
   await rmAsync(KYTHE_ENTRIES_OUTPUT_DIRECTORY);
   await mkdirAsync(KYTHE_ENTRIES_OUTPUT_DIRECTORY);
   const kzipFiles = (await readdirAsync(KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY)).filter(entry => entry.endsWith('.kzip'));
@@ -79,6 +88,7 @@ async function run_cxx_indexer() {
   });
   progressBar.tick();
   await Promise.all([...Array(PARALLEL)].map(cxx_indexer));
+  printDuration('CXX_INDEXING: ', Date.now() - t);
 
   async function cxx_indexer() {
     if (kzipIndex >= kzipFiles.length)
@@ -93,6 +103,7 @@ async function run_cxx_indexer() {
 }
 
 async function write_serving_table_from_entries() {
+  const t = Date.now();
   await rmAsync(KYTHE_SERVING_TABLE);
   const entryFiles = (await readdirAsync(KYTHE_ENTRIES_OUTPUT_DIRECTORY)).filter(entry => entry.endsWith('.entry'));
 
@@ -109,6 +120,28 @@ async function write_serving_table_from_entries() {
     });
     progressBar.tick(1);
   }
+  printDuration('WRITE_TABLES: ', Date.now() - t);
+}
+
+function printDuration(label, time) {
+  const quant = [1000, 60, 60];
+  const suffix = ['ms', 'sec', 'min', 'h'];
+  let i = 0;
+  for (; i < quant.length; ++i) {
+    if (time >= quant[i])
+      time = time / quant[i];
+    else
+      break;
+  }
+  let timeText = '';
+  if (i === 0) {
+    timetext = time.toFixed(2) + suffix[0];
+  } else {
+    const div = Math.floor(time);
+    const fl = time - div;
+    timetext = `${div}${suffix[i]} ${Math.round(quant[i - 1] * fl)}${suffix[i - 1]}`;
+  }
+  console.log(`${label}${YELLOW_COLOR}${timetext}${RESET_COLOR}`);
 }
 
 function findLastIndex(a, p) {
