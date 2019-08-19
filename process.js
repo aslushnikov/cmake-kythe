@@ -1,6 +1,7 @@
 const path = require('path');
 const util = require('util');
 const rmAsync = util.promisify(require('rimraf'));
+const spawn = require('child_process').spawn;
 
 const COMPILE_COMMANDS_PATH = '/home/aslushnikov/webkit/WebKitBuild/Release/compile_commands.json';
 const KYTHE_ROOT_DIRECTORY = '/home/aslushnikov/prog/webkit';
