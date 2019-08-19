@@ -11,7 +11,7 @@ const KYTHE_WRITE_TABLES_PATH = '/opt/kythe/tools/write_tables';
 const PARALLEL = 25;
 const KYTHE_ROOT_DIRECTORY = '/home/aslushnikov/prog/webkit';
 const KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY = '/tmp/wk-extract';
-const KYTHE_ENTRIES_OUTPUT_FILE = '/tmp/wk.entries';
+const KYTHE_ENTRIES_OUTPUT_DIRECTORY = '/tmp/wk-entries';
 const KYTHE_SERVING_TABLE = '/tmp/wk.serving';
 
 const COMPILE_COMMANDS_PATH = '/home/aslushnikov/webkit/WebKitBuild/Release/compile_commands.json';
@@ -23,15 +23,16 @@ const readdirAsync = util.promisify(fs.readdir);
 
 (async() => {
   const compile_commands = require(COMPILE_COMMANDS_PATH);
-  const bmallocCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/bmalloc'));
-  // const wtfCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/WTF'));
+  // const bmallocCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/bmalloc'));
+  const wtfCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/WTF'));
   // const jscCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/JavaScriptCore'));
-  console.log('bmalloc commands: ' + bmallocCommandsIndex);
-  //console.log('wtf commands: ' + wtfCommandsIndex);
+  // console.log('bmalloc commands: ' + bmallocCommandsIndex);
+  console.log('wtf compilation commands: ' + wtfCommandsIndex);
   //console.log('jsc commands: ' + jscCommandsIndex);
 
-  await run_cxx_extractor(compile_commands.slice(0, bmallocCommandsIndex + 1));
+  await run_cxx_extractor(compile_commands.slice(0, wtfCommandsIndex + 1));
   await run_cxx_indexer();
+  await write_serving_table_from_entries();
 })();
 
 async function run_cxx_extractor(commands) {
@@ -39,7 +40,7 @@ async function run_cxx_extractor(commands) {
   await mkdirAsync(KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY);
 
   let commandIndex = 0;
-  const progressBar = new ProgressBar(`Running cxx_extractor with ${PARALLEL} workers [:bar] :percent :etas `, {
+  const progressBar = new ProgressBar(`Running cxx_extractor with ${PARALLEL} workers [:bar] :current/:total :percent :etas `, {
     complete: '.',
     incomplete: ' ',
     width: 20,
@@ -54,34 +55,59 @@ async function run_cxx_extractor(commands) {
     const args = entry.command.trim().split(' ').slice(1);
     await spawnAsyncOrDie(KYTHE_EXTRACTOR_PATH, ...args, {
       cwd: entry.directory,
-      //stdio: 'inherit',
       env: {
         KYTHE_ROOT_DIRECTORY,
         KYTHE_OUTPUT_DIRECTORY: KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY,
       }
     });
     progressBar.tick(1);
-    // Recurse into itself to see if there's more work.
-    cxx_extractor();
+    await cxx_extractor();
   }
 }
 
 async function run_cxx_indexer() {
+  await rmAsync(KYTHE_ENTRIES_OUTPUT_DIRECTORY);
+  await mkdirAsync(KYTHE_ENTRIES_OUTPUT_DIRECTORY);
   const kzipFiles = (await readdirAsync(KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY)).filter(entry => entry.endsWith('.kzip'));
-  await rmAsync(KYTHE_ENTRIES_OUTPUT_FILE);
-  await rmAsync(KYTHE_SERVING_TABLE);
-  const progressBar = new ProgressBar(`Running cxx_indexer [:bar] :percent :etas `, {
+  let kzipIndex = 0;
+
+  const progressBar = new ProgressBar(`Running cxx_indexer with ${PARALLEL} workers [:bar] :current/:total :percent :etas `, {
     complete: '.',
     incomplete: ' ',
     width: 20,
-    total: kzipFiles.length,
+    total: kzipFiles.length + 1,
   });
-  for (const kzipFile of kzipFiles) {
-    await spawnAsyncOrDie(KYTHE_INDEXER_PATH, kzipFile, '-o', KYTHE_ENTRIES_OUTPUT_FILE, {
+  progressBar.tick();
+  await Promise.all([...Array(PARALLEL)].map(cxx_indexer));
+
+  async function cxx_indexer() {
+    if (kzipIndex >= kzipFiles.length)
+      return;
+    const kzipFile = kzipFiles[kzipIndex++];
+    await spawnAsyncOrDie(KYTHE_INDEXER_PATH, kzipFile, '-o', path.join(KYTHE_ENTRIES_OUTPUT_DIRECTORY, kzipFile +'.entry'), {
       cwd: KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY
     });
-    await spawnAsyncOrDie(KYTHE_WRITE_TABLES_PATH, '--entries', KYTHE_ENTRIES_OUTPUT_FILE, '--out', KYTHE_SERVING_TABLE);
-    progressBar.tick();
+    progressBar.tick(1);
+    await cxx_indexer();
+  }
+}
+
+async function write_serving_table_from_entries() {
+  await rmAsync(KYTHE_SERVING_TABLE);
+  const entryFiles = (await readdirAsync(KYTHE_ENTRIES_OUTPUT_DIRECTORY)).filter(entry => entry.endsWith('.entry'));
+
+  const progressBar = new ProgressBar(`Writing serving table [:bar] :current/:total :percent :etas `, {
+    complete: '.',
+    incomplete: ' ',
+    width: 20,
+    total: entryFiles.length + 1,
+  });
+  progressBar.tick();
+  for (const entryFile of entryFiles) {
+    await spawnAsyncOrDie(KYTHE_WRITE_TABLES_PATH, '--entries', entryFile, '--out', KYTHE_SERVING_TABLE, '--num_workers', PARALLEL, {
+      cwd: KYTHE_ENTRIES_OUTPUT_DIRECTORY,
+    });
+    progressBar.tick(1);
   }
 }
 
