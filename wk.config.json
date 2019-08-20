@@ -4,5 +4,5 @@
   "parallel": 50,
   "project_directory": "/home/aslushnikov/prog/webkit",
   "cmake_compilation_database": "/home/aslushnikov/webkit/WebKitBuild/Release/compile_commands.json",
-  "output_directory": "/tmp/wk"
+  "output_directory": "/home/aslushnikov/wk-codesearch"
 }
