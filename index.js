@@ -96,7 +96,7 @@ async function run_cxx_indexer() {
   const t = Date.now();
   const kzipFiles = (await readdirAsync(KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY)).filter(entry => entry.endsWith('.kzip'));
   console.log('Writing indexes...');
-  await spawnAsyncOrDie('/bin/sh', path.join(__dirname, 'index.sh'), KYTHE_INDEXER_PATH, KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY, KYTHE_WRITE_ENTRIES_PATH, GRAPH_STORE_PATH, {
+  await spawnAsyncOrDie('/bin/sh', path.join(__dirname, 'run_kythe_indexer.sh'), KYTHE_INDEXER_PATH, KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY, KYTHE_WRITE_ENTRIES_PATH, GRAPH_STORE_PATH, {
     stdio: 'inherit',
   });
   printDuration('CXX_INDEXER: ', Date.now() - t);
