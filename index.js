@@ -6,21 +6,6 @@ const fs = require('fs');
 const {spawn} = require('child_process');
 const ProgressBar = require('progress');
 
-const KYTHE_EXTRACTOR_PATH     = '/opt/kythe/extractors/cxx_extractor';
-const KYTHE_INDEXER_PATH       = '/opt/kythe/indexers/cxx_indexer';
-const KYTHE_WRITE_ENTRIES_PATH = '/opt/kythe/tools/write_entries';
-const KYTHE_WRITE_TABLES_PATH  = '/opt/kythe/tools/write_tables';
-const KYTHE_HTTP_SERVER        = '/opt/kythe/tools/http_server';
-const KYTHE_WEB_UI             = '/opt/kythe/web/ui';
-
-const PARALLEL = 50;
-const KYTHE_ROOT_DIRECTORY = '/home/aslushnikov/prog/webkit';
-const KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY = '/tmp/wk-extract';
-const KYTHE_ENTRIES_OUTPUT_DIRECTORY = '/tmp/wk-entries';
-const KYTHE_SERVING_TABLE = '/tmp/wk.serving';
-const GRAPH_STORE_PATH = '/tmp/wk.graphstore';
-const COMPILE_COMMANDS_PATH = '/home/aslushnikov/webkit/WebKitBuild/Release/compile_commands.json';
-
 const rmAsync = util.promisify(require('rimraf'));
 const mkdirAsync = util.promisify(fs.mkdir.bind(fs));
 const readdirAsync = util.promisify(fs.readdir);
@@ -171,7 +156,7 @@ async function readConfig(jsonPath) {
     KYTHE_WRITE_ENTRIES_PATH: path.resolve(jsonDir, json.kythe_path, 'tools/write_entries'),
     KYTHE_WRITE_TABLES_PATH: path.resolve(jsonDir, json.kythe_path, 'tools/write_tables'),
     KYTHE_HTTP_SERVER: path.resolve(jsonDir, json.kythe_path, 'tools/http_server'),
-    KYTHE_WEB_UI: path.resolve(jsonDir, json.kythe_path, 'web/ui'),
+    KYTHE_WEB_UI: json.kythe_web_ui_path ? json.kythe_web_ui_path : path.resolve(jsonDir, json.kythe_path, 'web/ui'),
     KYTHE_WEB_UI_PORT: json.kythe_web_ui_port || 'localhost:8080',
 
     SUBTREE: json.subtree || '',
@@ -220,7 +205,10 @@ async function spawnAsync(command, ...args) {
 
 async function spawnAsyncOrDie(command, ...args) {
   const {code, stdout, stderr} = await spawnAsync(command, ...args);
-  if (code !== 0)
+  if (code !== 0) {
+    if (args.length && args[args.length - 1].constructor.name !== 'String')
+      args.pop();
     throw new Error(`Failed to execute: "${command} ${args.join(' ')}".\n\n=== STDOUT ===\n${stdout}\n\n\n=== STDERR ===\n${stderr}`);
+  }
   return {stdout, stderr};
 }
