@@ -96,7 +96,7 @@ async function run_cxx_extractor(config, commands) {
     if (commandIndex >= commands.length)
       return;
     const entry = commands[commandIndex++];
-    const args = entry.command.trim().replace(/\\"/g, '"').split(' ').slice(1);
+    const args = entry.command.trim().replace(/\\"/g, '"').replace(/""/g, '').split(' ').slice(1);
     await spawnAsyncOrDie(config.KYTHE_EXTRACTOR_PATH, ...args, {
       cwd: entry.directory,
       env: {
