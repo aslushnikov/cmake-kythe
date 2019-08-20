@@ -40,12 +40,16 @@ if (process.argv.length !== 3) {
 (async() => {
   const config = await readConfig(process.argv[2]);
   const compile_commands = require(config.COMPILE_COMMANDS_PATH);
-  const bmallocCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/bmalloc'));
-  // const wtfCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/WTF'));
-  // const jscCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/JavaScriptCore'));
+  const lastCommandIndex = findLastIndex(compile_commands, entry => entry.file.includes(config.SUBTREE));
+  const commands = compile_commands.slice(0, lastCommandIndex + 1);
+  console.log(`Processing ${commands.length} out of ${compile_commands.length} commands`);
+  if (!commands.length) {
+    console.log('ERROR: NO COMMANDS TO PROCESS!');
+    return 1;
+  }
 
   const t = Date.now();
-  await run_cxx_extractor(config, compile_commands.slice(0, bmallocCommandsIndex + 1));
+  await run_cxx_extractor(config, commands);
   await run_cxx_indexer(config);
   await write_serving_table_from_entries(config);
   printDuration('Total time: ', Date.now() - t);
@@ -159,6 +163,8 @@ async function readConfig(jsonPath) {
     KYTHE_HTTP_SERVER: path.join(json.kythe_path, 'tools/http_server'),
     KYTHE_WEB_UI: path.join(json.kythe_path, 'web/ui'),
     KYTHE_WEB_UI_PORT: json.kythe_web_ui_port || 'localhost:8080',
+
+    SUBTREE: json.subtree || '',
 
     PARALLEL: json.parallel || require('os').cpus().length,
     KYTHE_ROOT_DIRECTORY: json.project_directory,
