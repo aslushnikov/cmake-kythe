@@ -1,20 +1,22 @@
 const path = require('path');
 const util = require('util');
 const fs = require('fs');
-const spawn = require('child_process').spawn;
+const {spawn} = require('child_process');
 const ProgressBar = require('progress');
 
-const KYTHE_EXTRACTOR_PATH    = '/opt/kythe/extractors/cxx_extractor';
-const KYTHE_INDEXER_PATH      = '/opt/kythe/indexers/cxx_indexer';
-const KYTHE_WRITE_TABLES_PATH = '/opt/kythe/tools/write_tables';
-const KYTHE_HTTP_SERVER = '/opt/kythe/tools/http_server';
-const KYTHE_WEB_UI = '/opt/kythe/web/ui';
+const KYTHE_EXTRACTOR_PATH     = '/opt/kythe/extractors/cxx_extractor';
+const KYTHE_INDEXER_PATH       = '/opt/kythe/indexers/cxx_indexer';
+const KYTHE_WRITE_ENTRIES_PATH = '/opt/kythe/tools/write_entries';
+const KYTHE_WRITE_TABLES_PATH  = '/opt/kythe/tools/write_tables';
+const KYTHE_HTTP_SERVER        = '/opt/kythe/tools/http_server';
+const KYTHE_WEB_UI             = '/opt/kythe/web/ui';
 
 const PARALLEL = 50;
 const KYTHE_ROOT_DIRECTORY = '/home/aslushnikov/prog/webkit';
 const KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY = '/tmp/wk-extract';
 const KYTHE_ENTRIES_OUTPUT_DIRECTORY = '/tmp/wk-entries';
 const KYTHE_SERVING_TABLE = '/tmp/wk.serving';
+const GRAPH_STORE_PATH = '/tmp/wk.graphstore';
 
 const COMPILE_COMMANDS_PATH = '/home/aslushnikov/webkit/WebKitBuild/Release/compile_commands.json';
 
@@ -29,29 +31,25 @@ const YELLOW_COLOR = '\x1b[33m';
 const RESET_COLOR = '\x1b[0m';
 
 (async() => {
-  if (await fs.exists(KYTHE_SERVING_TABLE)) {
-    const text = await question(`Serving table ${KYTHE_SERVING_TABLE} exists - do you want to APPEND to it? (Y/n)`);
+  if (await existsAsync(GRAPH_STORE_PATH)) {
+    const text = await question(`Serving table ${GRAPH_STORE_PATH} exists - do you want to ${RED_COLOR}DELETE${RESET_COLOR} it? (Y/n) `);
     const answer = text.trim().toLowerCase();
     if (answer === 'y') {
-      // do nothing
+      await rmAsync(GRAPH_STORE_PATH);
     } else if (answer === 'n') {
-      console.log(`OK, please run "${YELLOW_COLOR}rm -rf ${KYTHE_SERVING_TABLE}${RESET_COLOR}" yourself and re-run the script`);
-      return;
+      //console.log(`OK, please run "${YELLOW_COLOR}rm -rf ${GRAPH_STORE_PATH}${RESET_COLOR}" yourself and re-run the script`);
     } else {
       console.log('ERROR: did not understand your answer!');
       return;
     }
   }
   const compile_commands = require(COMPILE_COMMANDS_PATH);
-  // const bmallocCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/bmalloc'));
-  const wtfCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/WTF'));
+  const bmallocCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/bmalloc'));
+  // const wtfCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/WTF'));
   // const jscCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/JavaScriptCore'));
-  // console.log('bmalloc commands: ' + bmallocCommandsIndex);
-  console.log('wtf compilation commands: ' + wtfCommandsIndex);
-  //console.log('jsc commands: ' + jscCommandsIndex);
 
   const t = Date.now();
-  await run_cxx_extractor(compile_commands.slice(0, wtfCommandsIndex + 1));
+  await run_cxx_extractor(compile_commands.slice(0, bmallocCommandsIndex + 1));
   await run_cxx_indexer();
   await write_serving_table_from_entries();
   printDuration('Total time: ', Date.now() - t);
@@ -59,7 +57,7 @@ const RESET_COLOR = '\x1b[0m';
   console.log(`
     Serving on :8080
   `);
-  await spawnAsyncOrDie(KYTHE_HTTP_SERVER, '--public-resources', KYTHE_WEB_UI, '--listen', ':8080', '--serving_table', KYTHE_SERVING_TABLE);
+  await spawnAsyncOrDie(KYTHE_HTTP_SERVER, '--public_resources', KYTHE_WEB_UI, '--listen', ':8080', '--serving_table', KYTHE_SERVING_TABLE);
 })();
 
 async function run_cxx_extractor(commands) {
@@ -96,50 +94,18 @@ async function run_cxx_extractor(commands) {
 
 async function run_cxx_indexer() {
   const t = Date.now();
-  await rmAsync(KYTHE_ENTRIES_OUTPUT_DIRECTORY);
-  await mkdirAsync(KYTHE_ENTRIES_OUTPUT_DIRECTORY);
   const kzipFiles = (await readdirAsync(KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY)).filter(entry => entry.endsWith('.kzip'));
-  let kzipIndex = 0;
-
-  const progressBar = new ProgressBar(`Running cxx_indexer with ${PARALLEL} workers [:bar] :current/:total :percent :etas `, {
-    complete: '.',
-    incomplete: ' ',
-    width: 20,
-    total: kzipFiles.length + 1,
+  console.log('Writing indexes...');
+  await spawnAsyncOrDie('/bin/sh', path.join(__dirname, 'index.sh'), KYTHE_INDEXER_PATH, KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY, KYTHE_WRITE_ENTRIES_PATH, GRAPH_STORE_PATH, {
+    stdio: 'inherit',
   });
-  progressBar.tick();
-  await Promise.all([...Array(PARALLEL)].map(cxx_indexer));
-  printDuration('CXX_INDEXING: ', Date.now() - t);
-
-  async function cxx_indexer() {
-    if (kzipIndex >= kzipFiles.length)
-      return;
-    const kzipFile = kzipFiles[kzipIndex++];
-    await spawnAsyncOrDie(KYTHE_INDEXER_PATH, kzipFile, '-o', path.join(KYTHE_ENTRIES_OUTPUT_DIRECTORY, kzipFile +'.entry'), {
-      cwd: KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY
-    });
-    progressBar.tick(1);
-    await cxx_indexer();
-  }
+  printDuration('CXX_INDEXER: ', Date.now() - t);
 }
 
 async function write_serving_table_from_entries() {
   const t = Date.now();
-  const entryFiles = (await readdirAsync(KYTHE_ENTRIES_OUTPUT_DIRECTORY)).filter(entry => entry.endsWith('.entry'));
-
-  const progressBar = new ProgressBar(`Writing serving table [:bar] :current/:total :percent :etas `, {
-    complete: '.',
-    incomplete: ' ',
-    width: 20,
-    total: entryFiles.length + 1,
-  });
-  progressBar.tick();
-  for (const entryFile of entryFiles) {
-    await spawnAsyncOrDie(KYTHE_WRITE_TABLES_PATH, '--entries', entryFile, '--out', KYTHE_SERVING_TABLE, '--num_workers', PARALLEL, {
-      cwd: KYTHE_ENTRIES_OUTPUT_DIRECTORY,
-    });
-    progressBar.tick(1);
-  }
+  console.log('Writing serving table...');
+  await spawnAsyncOrDie(KYTHE_WRITE_TABLES_PATH, '--graphstore', GRAPH_STORE_PATH, '--out', KYTHE_SERVING_TABLE, '--num_workers', PARALLEL + '');
   printDuration('WRITE_TABLES: ', Date.now() - t);
 }
 
@@ -173,21 +139,6 @@ function findLastIndex(a, p) {
   return lastIndex;
 }
 
-async function spawnAsync(command, ...args) {
-  let options = {};
-  if (args.length && args[args.length - 1].constructor.name !== 'String')
-    options = args.pop();
-  const cmd = spawn(command, args, options);
-  let stdout = '';
-  let stderr = '';
-  if (cmd.stdout)
-    cmd.stdout.on('data', data => stdout += data);
-  if (cmd.stderr)
-    cmd.stderr.on('data', data => stderr += data);
-  const code = await new Promise(x => cmd.once('close', x));
-  return {code, stdout, stderr};
-}
-
 async function question(q) {
   const readline = require('readline');
   const rl = readline.createInterface({
@@ -203,9 +154,24 @@ async function question(q) {
   });
 }
 
+async function spawnAsync(command, ...args) {
+  let options = {};
+  if (args.length && args[args.length - 1].constructor.name !== 'String')
+    options = args.pop();
+  const cmd = spawn(command, args, options);
+  let stdout = '';
+  let stderr = '';
+  if (cmd.stdout)
+    cmd.stdout.on('data', data => stdout += data);
+  if (cmd.stderr)
+    cmd.stderr.on('data', data => stderr += data);
+  const code = await new Promise(x => cmd.once('close', x));
+  return {code, stdout, stderr};
+}
+
 async function spawnAsyncOrDie(command, ...args) {
   const {code, stdout, stderr} = await spawnAsync(command, ...args);
   if (code !== 0)
-    throw new Error(`Failed to executed: "${command} ${args.join(' ')}".\n\n=== STDOUT ===\n${stdout}\n\n\n=== STDERR ===\n${stderr}`);
+    throw new Error(`Failed to execute: "${command} ${args.join(' ')}".\n\n=== STDOUT ===\n${stdout}\n\n\n=== STDERR ===\n${stderr}`);
   return {stdout, stderr};
 }
