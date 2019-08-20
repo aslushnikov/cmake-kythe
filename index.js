@@ -39,6 +39,21 @@ if (process.argv.length !== 3) {
 
 (async() => {
   const config = await readConfig(process.argv[2]);
+  if (await existsAsync(config.OUTPUT_DIRECTORY)) {
+    const text = await question(`Output directory ${config.OUTPUT_DIRECTORY} exists - ${RED_COLOR}DELETE?${RESET_COLOR} (Y/n) `);
+    const answer = text.trim().toLowerCase();
+    if (answer === 'y') {
+      await rmAsync(config.OUTPUT_DIRECTORY);
+    } else if (answer === 'n') {
+      console.log(`OK - ${YELLOW_COLOR}just serving${RESET_COLOR} then.`);
+      await serve(config);
+      return null;
+    } else {
+      console.log('ERROR: did not understand your answer!');
+      return null;
+    }
+  }
+  await mkdirAsync(json.output_directory);
   const compile_commands = require(config.COMPILE_COMMANDS_PATH);
   const lastCommandIndex = findLastIndex(compile_commands, entry => entry.file.includes(config.SUBTREE));
   const commands = compile_commands.slice(0, lastCommandIndex + 1);
@@ -54,9 +69,13 @@ if (process.argv.length !== 3) {
   await write_serving_table_from_entries(config);
   printDuration('Total time: ', Date.now() - t);
 
-  console.log(`Serving on ${config.KYTHE_WEB_UI_PORT}...`);
-  await spawnAsyncOrDie(config.KYTHE_HTTP_SERVER, '--public_resources', config.KYTHE_WEB_UI, '--listen', config.KYTHE_WEB_UI_PORT, '--serving_table', config.KYTHE_SERVING_TABLE);
+  await serve(config);
 })();
+
+async function serve(config) {
+  console.log(`Serving on ${config.KYTHE_WEB_UI_PORT}`);
+  await spawnAsyncOrDie(config.KYTHE_HTTP_SERVER, '--public_resources', config.KYTHE_WEB_UI, '--listen', config.KYTHE_WEB_UI_PORT, '--serving_table', config.KYTHE_SERVING_TABLE);
+}
 
 async function run_cxx_extractor(config, commands) {
   const t = Date.now();
@@ -141,21 +160,7 @@ async function readConfig(jsonPath) {
   const json = JSON.parse(await readFileAsync(jsonPath));
   if (!json.output_directory)
     throw new Error('ERROR: no output directory in the json config');
-  if (await existsAsync(json.output_directory)) {
-    const text = await question(`Output directory ${json.output_directory} exists - ${RED_COLOR}DELETE?${RESET_COLOR} (Y/n) `);
-    const answer = text.trim().toLowerCase();
-    if (answer === 'y') {
-      await rmAsync(json.output_directory);
-    } else if (answer === 'n') {
-      console.log('OK - terminating then');
-      return null;
-    } else {
-      console.log('ERROR: did not understand your answer!');
-      return null;
-    }
-  }
-  await mkdirAsync(json.output_directory);
-  return {
+  const config = {
     KYTHE_EXTRACTOR_PATH: path.join(json.kythe_path, 'extractors/cxx_extractor'),
     KYTHE_INDEXER_PATH: path.join(json.kythe_path, 'indexers/cxx_indexer'),
     KYTHE_WRITE_ENTRIES_PATH: path.join(json.kythe_path, 'tools/write_entries'),
@@ -170,10 +175,12 @@ async function readConfig(jsonPath) {
     KYTHE_ROOT_DIRECTORY: json.project_directory,
     COMPILE_COMMANDS_PATH: json.cmake_compilation_database,
 
+    OUTPUT_DIRECTORY: json.output_directory,
     KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY: path.join(json.output_directory, 'kzips'),
     GRAPH_STORE_PATH: path.join(json.output_directory, 'graphstore'),
     KYTHE_SERVING_TABLE: path.join(json.output_directory, 'serving'),
   };
+  return config;
 }
 
 async function question(q) {
