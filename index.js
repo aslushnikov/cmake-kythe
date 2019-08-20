@@ -53,7 +53,7 @@ if (process.argv.length !== 3) {
       return null;
     }
   }
-  await mkdirAsync(json.output_directory);
+  await mkdirAsync(config.OUTPUT_DIRECTORY);
   const compile_commands = require(config.COMPILE_COMMANDS_PATH);
   const lastCommandIndex = findLastIndex(compile_commands, entry => entry.file.includes(config.SUBTREE));
   const commands = compile_commands.slice(0, lastCommandIndex + 1);
