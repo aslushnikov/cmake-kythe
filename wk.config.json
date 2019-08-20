@@ -4,6 +4,5 @@
   "parallel": 50,
   "project_directory": "/home/aslushnikov/prog/webkit",
   "cmake_compilation_database": "/home/aslushnikov/webkit/WebKitBuild/Release/compile_commands.json",
-  "subtree": "Source/bmalloc",
   "output_directory": "/tmp/wk"
 }
