@@ -53,6 +53,9 @@ if (process.argv.length !== 3) {
       return null;
     }
   }
+  console.log(`${YELLOW_COLOR}===== CONFIG =====${RESET_COLOR}`);
+  console.log(JSON.stringify(config, null, 2));
+  console.log('');
   await mkdirAsync(config.OUTPUT_DIRECTORY);
   const compile_commands = require(config.COMPILE_COMMANDS_PATH);
   const lastCommandIndex = findLastIndex(compile_commands, entry => entry.file.includes(config.SUBTREE));
@@ -158,27 +161,29 @@ function findLastIndex(a, p) {
 
 async function readConfig(jsonPath) {
   const json = JSON.parse(await readFileAsync(jsonPath));
-  if (!json.output_directory)
+  const jsonDir = path.dirname(jsonPath);
+  const output_directory = path.resolve(jsonDir, json.output_directory);
+  if (!output_directory)
     throw new Error('ERROR: no output directory in the json config');
   const config = {
-    KYTHE_EXTRACTOR_PATH: path.join(json.kythe_path, 'extractors/cxx_extractor'),
-    KYTHE_INDEXER_PATH: path.join(json.kythe_path, 'indexers/cxx_indexer'),
-    KYTHE_WRITE_ENTRIES_PATH: path.join(json.kythe_path, 'tools/write_entries'),
-    KYTHE_WRITE_TABLES_PATH: path.join(json.kythe_path, 'tools/write_tables'),
-    KYTHE_HTTP_SERVER: path.join(json.kythe_path, 'tools/http_server'),
-    KYTHE_WEB_UI: path.join(json.kythe_path, 'web/ui'),
+    KYTHE_EXTRACTOR_PATH: path.resolve(jsonDir, json.kythe_path, 'extractors/cxx_extractor'),
+    KYTHE_INDEXER_PATH: path.resolve(jsonDir, json.kythe_path, 'indexers/cxx_indexer'),
+    KYTHE_WRITE_ENTRIES_PATH: path.resolve(jsonDir, json.kythe_path, 'tools/write_entries'),
+    KYTHE_WRITE_TABLES_PATH: path.resolve(jsonDir, json.kythe_path, 'tools/write_tables'),
+    KYTHE_HTTP_SERVER: path.resolve(jsonDir, json.kythe_path, 'tools/http_server'),
+    KYTHE_WEB_UI: path.resolve(jsonDir, json.kythe_path, 'web/ui'),
     KYTHE_WEB_UI_PORT: json.kythe_web_ui_port || 'localhost:8080',
 
     SUBTREE: json.subtree || '',
 
     PARALLEL: json.parallel || require('os').cpus().length,
-    KYTHE_ROOT_DIRECTORY: json.project_directory,
-    COMPILE_COMMANDS_PATH: json.cmake_compilation_database,
+    KYTHE_ROOT_DIRECTORY: path.resolve(jsonDir, json.project_directory),
+    COMPILE_COMMANDS_PATH: path.resolve(jsonDir, json.cmake_compilation_database),
 
-    OUTPUT_DIRECTORY: json.output_directory,
-    KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY: path.join(json.output_directory, 'kzips'),
-    GRAPH_STORE_PATH: path.join(json.output_directory, 'graphstore'),
-    KYTHE_SERVING_TABLE: path.join(json.output_directory, 'serving'),
+    OUTPUT_DIRECTORY: output_directory,
+    KYTHE_CXX_EXTRACT_OUTPUT_DIRECTORY: path.join(output_directory, 'kzips'),
+    GRAPH_STORE_PATH: path.join(output_directory, 'graphstore'),
+    KYTHE_SERVING_TABLE: path.join(output_directory, 'serving'),
   };
   return config;
 }
