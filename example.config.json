@@ -1,0 +1,8 @@
+{
+  "kythe_path": "/opt/kythe",
+  "port": ":8080",
+  "parallel": 50,
+  "project_directory": "/home/aslushnikov/prog/cmake-example",
+  "cmake_compilation_database": "/home/aslushnikov/prog/cmake-example/build/compile_commands.json",
+  "output_directory": "/tmp/cmake-example"
+}
