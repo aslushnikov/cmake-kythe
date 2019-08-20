@@ -7,6 +7,8 @@ const ProgressBar = require('progress');
 const KYTHE_EXTRACTOR_PATH    = '/opt/kythe/extractors/cxx_extractor';
 const KYTHE_INDEXER_PATH      = '/opt/kythe/indexers/cxx_indexer';
 const KYTHE_WRITE_TABLES_PATH = '/opt/kythe/tools/write_tables';
+const KYTHE_HTTP_SERVER = '/opt/kythe/tools/http_server';
+const KYTHE_WEB_UI = '/opt/kythe/web/ui';
 
 const PARALLEL = 50;
 const KYTHE_ROOT_DIRECTORY = '/home/aslushnikov/prog/webkit';
@@ -19,6 +21,7 @@ const COMPILE_COMMANDS_PATH = '/home/aslushnikov/webkit/WebKitBuild/Release/comp
 const rmAsync = util.promisify(require('rimraf'));
 const mkdirAsync = util.promisify(fs.mkdir.bind(fs));
 const readdirAsync = util.promisify(fs.readdir);
+const existsAsync = util.promisify(fs.exists);
 
 const RED_COLOR = '\x1b[31m';
 const GREEN_COLOR = '\x1b[32m';
@@ -26,6 +29,19 @@ const YELLOW_COLOR = '\x1b[33m';
 const RESET_COLOR = '\x1b[0m';
 
 (async() => {
+  if (await fs.exists(KYTHE_SERVING_TABLE)) {
+    const text = await question(`Serving table ${KYTHE_SERVING_TABLE} exists - do you want to APPEND to it? (Y/n)`);
+    const answer = text.trim().toLowerCase();
+    if (answer === 'y') {
+      // do nothing
+    } else if (answer === 'n') {
+      console.log(`OK, please run "${YELLOW_COLOR}rm -rf ${KYTHE_SERVING_TABLE}${RESET_COLOR}" yourself and re-run the script`);
+      return;
+    } else {
+      console.log('ERROR: did not understand your answer!');
+      return;
+    }
+  }
   const compile_commands = require(COMPILE_COMMANDS_PATH);
   // const bmallocCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/bmalloc'));
   const wtfCommandsIndex = findLastIndex(compile_commands, entry => entry.file.includes('Source/WTF'));
@@ -39,6 +55,11 @@ const RESET_COLOR = '\x1b[0m';
   await run_cxx_indexer();
   await write_serving_table_from_entries();
   printDuration('Total time: ', Date.now() - t);
+
+  console.log(`
+    Serving on :8080
+  `);
+  await spawnAsyncOrDie(KYTHE_HTTP_SERVER, '--public-resources', KYTHE_WEB_UI, '--listen', ':8080', '--serving_table', KYTHE_SERVING_TABLE);
 })();
 
 async function run_cxx_extractor(commands) {
@@ -104,7 +125,6 @@ async function run_cxx_indexer() {
 
 async function write_serving_table_from_entries() {
   const t = Date.now();
-  await rmAsync(KYTHE_SERVING_TABLE);
   const entryFiles = (await readdirAsync(KYTHE_ENTRIES_OUTPUT_DIRECTORY)).filter(entry => entry.endsWith('.entry'));
 
   const progressBar = new ProgressBar(`Writing serving table [:bar] :current/:total :percent :etas `, {
@@ -166,6 +186,21 @@ async function spawnAsync(command, ...args) {
     cmd.stderr.on('data', data => stderr += data);
   const code = await new Promise(x => cmd.once('close', x));
   return {code, stdout, stderr};
+}
+
+async function question(q) {
+  const readline = require('readline');
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  return new Promise(fulfill => {
+    rl.question(q, (answer) => {
+      rl.close();
+      fulfill(answer);
+    });
+  });
 }
 
 async function spawnAsyncOrDie(command, ...args) {
