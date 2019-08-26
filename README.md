@@ -82,7 +82,7 @@ Save the following to the `~/cmake-example/config.json`:
 7. Last step - run indexing!
 
 ```sh
-user:~/cmake-example$ node ../cmake-kythe/index.js config.js
+user:~/cmake-example$ node ../cmake-kythe/index.js config.json
 ```
 
 This step takes ~5 minutes for me. Please, give it some time. Once it's done,
